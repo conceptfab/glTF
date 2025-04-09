@@ -1,118 +1,126 @@
-Analiza błędu w obsłudze fixedScale przy ładowaniu modelu
-W pliku script.js znalazłem problem z obsługą parametru fixedScale podczas ładowania modelu. Poniżej przedstawiam znalezione problemy i propozycje zmian.
-
-1. Błąd w obsłudze fixedScale w funkcji loadModel
-   Plik: script.js
-   Problem: Wartość fixedScale z konfiguracji modelu nie jest prawidłowo uwzględniana przy skalowaniu modelu.
-   Znalazłem następujący fragment kodu, który wymaga poprawy:
-   python// Zastosowanie skalowania zgodnie z konfiguracją
-   if (config && config.scale) {
-   if (config.scale.method === 'fixed') {
-   const scale = (config.scale.fixedScale || 1.0) _ 0.1; // 10x mniejsza skala
-   model.scale.set(scale, scale, scale);
-   } else if (config.scale.method === 'auto') {
-   // Obliczanie skali automatycznej na podstawie największego wymiaru
-   const maxDimension = Math.max(size.x, size.y, size.z);
-   const targetSize = (config.scale.targetSize || 1.0) _ 0.1; // 10x mniejsza skala
-   const scale = targetSize / maxDimension;
-   model.scale.set(scale, scale, scale);
-   }
-   }
-   Proponowana zmiana:
-   javascript// Zastosowanie skalowania zgodnie z konfiguracją
-   if (config && config.scale) {
-   if (config.scale.method === 'fixed') {
-   // Używamy dokładnie wartości fixedScale bez mnożenia przez 0.1
-   const scale = config.scale.fixedScale || 1.0;
-   console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
-   model.scale.set(scale, scale, scale);
-   } else if (config.scale.method === 'auto') {
-   // Obliczanie skali automatycznej na podstawie największego wymiaru
-   const maxDimension = Math.max(size.x, size.y, size.z);
-   const targetSize = config.scale.targetSize || 100;
-   const scale = targetSize / maxDimension;
-   console.log(`🔍 Używam automatycznej skali: ${scale} (metoda: auto, targetSize: ${targetSize}, maxDimension: ${maxDimension})`);
-   model.scale.set(scale, scale, scale);
-   }
-   }
-2. Dodanie logowania dla debugowania skalowania
-   Aby ułatwić diagnozowanie problemów ze skalowaniem, warto dodać więcej logów przed funkcją ładowania modelu:
-   javascript// Funkcja do ładowania modelu
-   async function loadModel(modelPath) {
-   if (!modelPath) {
-   console.warn('Nie podano ścieżki do modelu');
-   return;
-   }
-
-console.log(`🔄 Ładowanie modelu: ${modelPath}`);
-
-if (model) {
-scene.remove(model);
-if (model.boundingBoxHelper) {
-scene.remove(model.boundingBoxHelper);
+Analiza ładowania ustawień sceny z pliku default.json
+Po przeanalizowaniu kodu znalazłem następujące problemy związane z ładowaniem ustawień sceny:
+Problem 1: Niepoprawna ścieżka do pliku konfiguracyjnego
+Plik: script.js
+Funkcja: loadSceneConfig()
+Aktualny kod:
+javascriptasync function loadSceneConfig(sceneName = 'default') {
+  try {
+    console.log('🔄 Ładowanie konfiguracji sceny:', `scenes/${sceneName}.json`);
+    const response = await fetch(`scenes/${sceneName}.json`);
+    // ...
+Ścieżka jest poprawna, ale nie ma dodatkowej walidacji czy plik istnieje w odpowiedniej lokalizacji.
+Problem 2: Nieprawidłowe zastosowanie ustawień kamery
+Plik: script.js
+Funkcja: init()
+javascript// Ustawienie początkowej pozycji kamery z konfiguracji
+if (
+  currentSceneConfig &&
+  currentSceneConfig.cameras &&
+  currentSceneConfig.cameras.default
+) {
+  const defaultCam = currentSceneConfig.cameras.default;
+  camera.position.set(
+    defaultCam.position.x,
+    defaultCam.position.y,
+    defaultCam.position.z
+  );
 }
-}
+W powyższym kodzie brakuje ustawienia controls.target na podstawie defaultCam.target, co powoduje, że kamera może być skierowana w nieprawidłowym kierunku.
+Problem 3: Brak pełnej obsługi właściwości renderera
+Plik: script.js
+Funkcja: init()
+javascript// Zastosuj ustawienia z konfiguracji sceny
+if (currentSceneConfig && currentSceneConfig.renderer) {
+  const rendererConfig = currentSceneConfig.renderer;
+  
+  renderer.setPixelRatio(
+    rendererConfig.pixelRatio === 'devicePixelRatio'
+      ? window.devicePixelRatio
+      : rendererConfig.pixelRatio
+  );
+  // ...
+W tej części kodu, jeśli rendererConfig.pixelRatio nie jest ciągiem znaków "devicePixelRatio", używa wartości bezpośrednio zamiast sprawdzać, czy jest liczbą, co może prowadzić do błędów.
+Propozycje zmian
+Zmiana 1: Poprawa ładowania konfiguracji sceny
+Plik: script.js
+Funkcja: loadSceneConfig()
+javascriptasync function loadSceneConfig(sceneName = 'default') {
+  try {
+    const configPath = `scenes/${sceneName}.json`;
+    console.log('🔄 Ładowanie konfiguracji sceny:', configPath);
+    const response = await fetch(configPath);
 
-currentModelPath = modelPath;
-const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'));
+    if (!response.ok) {
+      console.warn(`⚠️ Nie udało się załadować konfiguracji sceny: ${configPath} (status: ${response.status})`);
+      return null;
+    }
 
-try {
-// Ładowanie konfiguracji modelu
-const config = await loadModelConfig(modelDir);
-console.log(`📋 Konfiguracja modelu:`, config);
-
-    const loader = new THREE.GLTFLoader();
-
-    // Reszta kodu pozostaje bez zmian
-
-3.  Poprawiona obsługa konfiguracji modelu
-    W obecnej implementacji loadModelConfig, dodajmy obsługę domyślnej konfiguracji, jeśli plik nie istnieje:
-    javascript// Funkcja ładująca konfigurację modelu
-    async function loadModelConfig(modelDir) {
     try {
-    console.log(`🔍 Próba ładowania konfiguracji z: ${modelDir}/config.json`);
-    const response = await fetch(`${modelDir}/config.json`);
-        if (!response.ok) {
-          console.warn(`⚠️ Nie znaleziono pliku konfiguracyjnego dla ${modelDir}, używam domyślnych ustawień`);
-          return {
-            "center": {"x": true, "y": true, "z": true},
-            "position": {
-              "method": "floor",
-              "value": 0
-            },
-            "scale": {
-              "method": "fixed",
-              "fixedScale": 0.2
-            },
-            "rotation": {
-              "x": 0,
-              "y": 0,
-              "z": 0
-            }
-          };
-        }
-
-        const config = await response.json();
-        console.log(`✅ Załadowano konfigurację dla ${modelDir}:`, config);
-        modelConfigs.set(modelDir, config);
-        return config;
-    } catch (error) {
-    console.error(`❌ Błąd ładowania konfiguracji dla ${modelDir}:`, error);
-    return {
-    "center": {"x": true, "y": true, "z": true},
-    "position": {
-    "method": "floor",
-    "value": 0
-    },
-    "scale": {
-    "method": "fixed",
-    "fixedScale": 0.2
-    },
-    "rotation": {
-    "x": 0,
-    "y": 0,
-    "z": 0
+      const config = await response.json();
+      console.log('✅ Załadowana konfiguracja:', config);
+      currentSceneConfig = config;
+      return config;
+    } catch (parseError) {
+      console.error(`❌ Błąd parsowania JSON z pliku ${configPath}:`, parseError);
+      return null;
     }
-    };
+  } catch (error) {
+    console.error('❌ Błąd wczytywania konfiguracji sceny:', error);
+    return null;
+  }
+}
+Zmiana 2: Poprawne ustawienie kamery i jej celu
+Plik: script.js
+Funkcja: init()
+javascript// Ustawienie początkowej pozycji kamery z konfiguracji
+if (
+  currentSceneConfig &&
+  currentSceneConfig.cameras &&
+  currentSceneConfig.cameras.default
+) {
+  const defaultCam = currentSceneConfig.cameras.default;
+  console.log('📷 Ustawiam domyślną pozycję kamery:', defaultCam.position);
+  camera.position.set(
+    defaultCam.position.x,
+    defaultCam.position.y,
+    defaultCam.position.z
+  );
+  
+  // Ustawienie celu kamery, jeśli został zdefiniowany
+  if (defaultCam.target) {
+    console.log('🎯 Ustawiam domyślny cel kamery:', defaultCam.target);
+    controls.target.set(
+      defaultCam.target.x,
+      defaultCam.target.y,
+      defaultCam.target.z
+    );
+    controls.update();
+  }
+}
+Zmiana 3: Bezpieczniejsza obsługa właściwości renderera
+Plik: script.js
+Funkcja: init()
+javascript// Zastosuj ustawienia z konfiguracji sceny
+if (currentSceneConfig && currentSceneConfig.renderer) {
+  const rendererConfig = currentSceneConfig.renderer;
+  
+  // Bezpieczne ustawienie pixelRatio
+  if (rendererConfig.pixelRatio) {
+    if (rendererConfig.pixelRatio === 'devicePixelRatio') {
+      renderer.setPixelRatio(window.devicePixelRatio);
+    } else if (typeof rendererConfig.pixelRatio === 'number') {
+      renderer.setPixelRatio(rendererConfig.pixelRatio);
+    } else {
+      console.warn('⚠️ Nieprawidłowa wartość pixelRatio, używam domyślnej');
+      renderer.setPixelRatio(window.devicePixelRatio);
     }
-    }
+  }
+  
+  // Bezpieczne ustawienie pozostałych właściwości
+  if (rendererConfig.antialias !== undefined) renderer.antialias = rendererConfig.antialias;
+  if (rendererConfig.logarithmicDepthBuffer !== undefined) renderer.logarithmicDepthBuffer = rendererConfig.logarithmicDepthBuffer;
+  
+  // ... pozostała część kodu
+}
+W podsumowaniu, ładowanie ustawień sceny z pliku default.json generalnie działa, ale wymaga kilku poprawek, aby zapewnić bardziej niezawodne działanie i lepsze obsługiwanie błędów.

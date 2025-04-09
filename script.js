@@ -40,29 +40,31 @@ function createGradientTexture(
 // Funkcja wczytująca konfigurację sceny
 async function loadSceneConfig(sceneName = 'default') {
   try {
-    console.log('🔄 Ładowanie konfiguracji sceny:', `scenes/${sceneName}.json`);
-    const response = await fetch(`scenes/${sceneName}.json`);
+    const configPath = `scenes/${sceneName}.json`;
+    console.log('🔄 Ładowanie konfiguracji sceny:', configPath);
+    const response = await fetch(configPath);
 
     if (!response.ok) {
-      throw new Error(
-        `Nie można załadować konfiguracji sceny (status ${response.status})`
+      console.warn(
+        `⚠️ Nie udało się załadować konfiguracji sceny: ${configPath} (status: ${response.status})`
       );
+      return null;
     }
 
-    const config = await response.json();
-    console.log('✅ Załadowana konfiguracja:', config);
-    currentSceneConfig = config;
-
-    // Aplikuj konfigurację sceny
-    if (scene && config.background) {
-      console.log('🎨 Ustawiam kolor tła:', config.background.color);
-      scene.background = new THREE.Color(config.background.color);
+    try {
+      const config = await response.json();
+      console.log('✅ Załadowana konfiguracja:', config);
+      currentSceneConfig = config;
+      return config;
+    } catch (parseError) {
+      console.error(
+        `❌ Błąd parsowania JSON z pliku ${configPath}:`,
+        parseError
+      );
+      return null;
     }
-
-    return config;
   } catch (error) {
     console.error('❌ Błąd wczytywania konfiguracji sceny:', error);
-    // Zwróć domyślną konfigurację lub null
     return null;
   }
 }
@@ -402,11 +404,23 @@ async function init() {
     currentSceneConfig.cameras.default
   ) {
     const defaultCam = currentSceneConfig.cameras.default;
+    console.log('📷 Ustawiam domyślną pozycję kamery:', defaultCam.position);
     camera.position.set(
       defaultCam.position.x,
       defaultCam.position.y,
       defaultCam.position.z
     );
+
+    // Ustawienie celu kamery, jeśli został zdefiniowany
+    if (defaultCam.target) {
+      console.log('🎯 Ustawiam domyślny cel kamery:', defaultCam.target);
+      controls.target.set(
+        defaultCam.target.x,
+        defaultCam.target.y,
+        defaultCam.target.z
+      );
+      controls.update();
+    }
   } else {
     camera.position.set(5, 5, 5);
   }
@@ -418,14 +432,23 @@ async function init() {
   if (currentSceneConfig && currentSceneConfig.renderer) {
     const rendererConfig = currentSceneConfig.renderer;
 
-    renderer.setPixelRatio(
-      rendererConfig.pixelRatio === 'devicePixelRatio'
-        ? window.devicePixelRatio
-        : rendererConfig.pixelRatio
-    );
+    // Bezpieczne ustawienie pixelRatio
+    if (rendererConfig.pixelRatio) {
+      if (rendererConfig.pixelRatio === 'devicePixelRatio') {
+        renderer.setPixelRatio(window.devicePixelRatio);
+      } else if (typeof rendererConfig.pixelRatio === 'number') {
+        renderer.setPixelRatio(rendererConfig.pixelRatio);
+      } else {
+        console.warn('⚠️ Nieprawidłowa wartość pixelRatio, używam domyślnej');
+        renderer.setPixelRatio(window.devicePixelRatio);
+      }
+    }
 
-    renderer.antialias = rendererConfig.antialias;
-    renderer.logarithmicDepthBuffer = rendererConfig.logarithmicDepthBuffer;
+    // Bezpieczne ustawienie pozostałych właściwości
+    if (rendererConfig.antialias !== undefined)
+      renderer.antialias = rendererConfig.antialias;
+    if (rendererConfig.logarithmicDepthBuffer !== undefined)
+      renderer.logarithmicDepthBuffer = rendererConfig.logarithmicDepthBuffer;
 
     if (rendererConfig.shadowMap) {
       renderer.shadowMap.enabled = rendererConfig.shadowMap.enabled;
