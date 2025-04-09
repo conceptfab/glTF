@@ -37,17 +37,49 @@ function createGradientTexture(
   return new THREE.CanvasTexture(canvas);
 }
 
+// Funkcja pobierająca listę dostępnych plików konfiguracji scen
+async function loadScenesList() {
+  try {
+    const scenesList = ['default']; // Domyślnie zawsze jest scena default
+
+    try {
+      const response = await fetch('scenes/list.json');
+      if (response.ok) {
+        const additionalScenes = await response.json();
+        scenesList.push(
+          ...additionalScenes.filter((scene) => scene !== 'default')
+        );
+      }
+    } catch (listError) {
+      console.warn(
+        'Nie znaleziono listy dodatkowych scen, używam tylko sceny domyślnej'
+      );
+    }
+
+    return scenesList;
+  } catch (error) {
+    console.error('❌ Błąd ładowania listy scen:', error);
+    return ['default'];
+  }
+}
+
 // Funkcja wczytująca konfigurację sceny
 async function loadSceneConfig(sceneName = 'default') {
   try {
     const configPath = `scenes/${sceneName}.json`;
     console.log('🔄 Ładowanie konfiguracji sceny:', configPath);
-    const response = await fetch(configPath);
 
+    const response = await fetch(configPath);
     if (!response.ok) {
       console.warn(
         `⚠️ Nie udało się załadować konfiguracji sceny: ${configPath} (status: ${response.status})`
       );
+
+      if (sceneName !== 'default') {
+        console.log('🔄 Próba załadowania domyślnej konfiguracji...');
+        return loadSceneConfig('default');
+      }
+
       return null;
     }
 
@@ -66,6 +98,124 @@ async function loadSceneConfig(sceneName = 'default') {
   } catch (error) {
     console.error('❌ Błąd wczytywania konfiguracji sceny:', error);
     return null;
+  }
+}
+
+// Funkcja do aplikowania konfiguracji sceny
+function applySceneConfig(config) {
+  if (!config) return;
+
+  console.log('🔄 Aplikowanie konfiguracji sceny:', config.name || 'bez nazwy');
+
+  if (config.background && config.background.color) {
+    scene.background = new THREE.Color(config.background.color);
+    console.log('🎨 Ustawiono kolor tła:', config.background.color);
+  }
+
+  applyLightingConfig(config);
+
+  if (config.cameras && config.cameras.default && controls) {
+    const defaultCam = config.cameras.default;
+    console.log('📷 Ustawiam domyślną pozycję kamery:', defaultCam.position);
+    camera.position.set(
+      defaultCam.position.x,
+      defaultCam.position.y,
+      defaultCam.position.z
+    );
+
+    if (defaultCam.target) {
+      console.log('🎯 Ustawiam domyślny cel kamery:', defaultCam.target);
+      controls.target.set(
+        defaultCam.target.x,
+        defaultCam.target.y,
+        defaultCam.target.z
+      );
+      controls.update();
+    }
+  }
+
+  if (config.materials && config.materials.floor) {
+    updateFloorMaterial(config.materials.floor);
+  }
+
+  currentSceneConfig = config;
+}
+
+// Funkcja do aktualizacji materiału podłogi
+function updateFloorMaterial(materialConfig) {
+  const floor = scene.children.find(
+    (child) => child.isMesh && child.geometry instanceof THREE.PlaneGeometry
+  );
+
+  if (!floor) {
+    console.warn('⚠️ Nie znaleziono obiektu podłogi w scenie');
+    return;
+  }
+
+  console.log('🔄 Aktualizacja materiału podłogi:', materialConfig);
+
+  const floorMaterial = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(materialConfig.color || '#121212'),
+    roughness: materialConfig.roughness || 0.8,
+    metalness: materialConfig.metalness || 0.2,
+    transparent: materialConfig.transparent || false,
+    side: THREE.DoubleSide,
+  });
+
+  if (materialConfig.alphaMap) {
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      materialConfig.alphaMap,
+      (texture) => {
+        floorMaterial.alphaMap = texture;
+        floorMaterial.transparent = true;
+        floorMaterial.needsUpdate = true;
+      },
+      undefined,
+      (error) => {
+        console.error('❌ Błąd ładowania mapy przezroczystości:', error);
+      }
+    );
+  }
+
+  floor.material = floorMaterial;
+}
+
+// Funkcja ładująca i populująca listę dostępnych scen
+async function loadAvailableScenes() {
+  try {
+    const scenesList = await loadScenesList();
+
+    const scenesSelect = document.getElementById('scenesSelect');
+    if (scenesSelect) {
+      scenesSelect.innerHTML = '';
+
+      scenesList.forEach((sceneName) => {
+        const option = document.createElement('option');
+        option.value = sceneName;
+        const displayName = sceneName
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (char) => char.toUpperCase());
+
+        option.textContent = displayName;
+        scenesSelect.appendChild(option);
+      });
+
+      if (currentSceneConfig && currentSceneConfig.name) {
+        const sceneName = currentSceneConfig.name
+          .toLowerCase()
+          .replace(/ /g, '_');
+        const matchingOption = Array.from(scenesSelect.options).find(
+          (option) => option.value.toLowerCase() === sceneName
+        );
+
+        if (matchingOption) {
+          scenesSelect.value = matchingOption.value;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('❌ Błąd ładowania listy scen:', error);
   }
 }
 
@@ -312,41 +462,93 @@ function createAxis() {
   return axis;
 }
 
-// Funkcja ładująca listę modeli
+// Funkcja przeszukująca folder w poszukiwaniu modeli
+async function scanModelsDirectory() {
+  try {
+    const models = [];
+
+    // Funkcja pomocnicza do przeszukiwania podfolderów
+    async function scanDirectory(directory) {
+      try {
+        // Dodajemy trailing slash jeśli go nie ma
+        if (!directory.endsWith('/')) {
+          directory += '/';
+        }
+
+        const response = await fetch(directory);
+        if (!response.ok) {
+          console.warn(`⚠️ Nie można otworzyć katalogu ${directory}`);
+          return;
+        }
+
+        const text = await response.text();
+        const parser = new DOMParser();
+        const html = parser.parseFromString(text, 'text/html');
+
+        // Znajdź wszystkie linki do plików
+        const links = Array.from(html.querySelectorAll('a'))
+          .map((a) => a.getAttribute('href'))
+          .filter((href) => href && !href.startsWith('?') && href !== '../');
+
+        for (const link of links) {
+          const fullPath = `${directory}${link}`;
+
+          // Jeśli to folder, przeszukaj go rekurencyjnie
+          if (link.endsWith('/')) {
+            await scanDirectory(fullPath);
+          }
+          // Jeśli to plik modelu, dodaj go do listy
+          else if (
+            link.toLowerCase().endsWith('.glb') ||
+            link.toLowerCase().endsWith('.gltf')
+          ) {
+            const modelName = link
+              .split('/')
+              .pop()
+              .replace(/\.(glb|gltf)$/i, '');
+            const modelPath = fullPath;
+
+            models.push({
+              name: modelName,
+              path: modelPath,
+              directory: directory,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(
+          `❌ Błąd podczas skanowania katalogu ${directory}:`,
+          error
+        );
+      }
+    }
+
+    // Rozpocznij skanowanie od głównego katalogu models
+    await scanDirectory('models/');
+
+    console.log('✅ Znaleziono modele:', models);
+    return models;
+  } catch (error) {
+    console.error('❌ Błąd podczas skanowania katalogów modeli:', error);
+    return [];
+  }
+}
+
+// Modyfikacja funkcji loadModelsList
 async function loadModelsList() {
   try {
-    const response = await fetch('models/list.json');
-    if (!response.ok) throw new Error('Nie można załadować listy modeli');
+    // Zeskanuj katalogi w poszukiwaniu modeli
+    const models = await scanModelsDirectory();
+    console.log('✅ Znaleziono modele:', models);
 
-    const modelsList = await response.json();
-    const modelsListElement = document.getElementById('modelsList');
-
-    if (!modelsListElement) {
-      console.error('Nie znaleziono elementu listy modeli w DOM');
-      return;
-    }
-
-    modelsListElement.innerHTML = '';
-
-    modelsList.forEach((model) => {
-      const li = document.createElement('li');
-      const a = document.createElement('a');
-      a.href = '#';
-      a.textContent = model.name;
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        loadModel(model.path);
-      });
-      li.appendChild(a);
-      modelsListElement.appendChild(li);
-    });
+    // Zwróć listę modeli w odpowiednim formacie
+    return models.map((model) => ({
+      name: model.name,
+      path: model.path,
+    }));
   } catch (error) {
-    console.error('Błąd ładowania listy modeli:', error);
-    const modelsListElement = document.getElementById('modelsList');
-    if (modelsListElement) {
-      modelsListElement.innerHTML =
-        '<div class="error">Nie można załadować listy modeli</div>';
-    }
+    console.error('❌ Błąd ładowania listy modeli:', error);
+    return [];
   }
 }
 
@@ -362,12 +564,6 @@ async function init() {
   // Tworzenie sceny
   scene = new THREE.Scene();
   console.log('🎬 Utworzono scenę');
-
-  // Dodanie czerwonego sześcianu
-  const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-  scene.add(cube);
 
   // Wczytanie i aplikacja konfiguracji sceny
   console.log('📥 Wczytuję konfigurację sceny...');
@@ -538,7 +734,28 @@ async function init() {
   setupUI();
 
   // Załadowanie listy modeli
-  await loadModelsList();
+  loadModelsList().then((models) => {
+    const modelsListElement = document.getElementById('modelsList');
+    if (!modelsListElement) {
+      console.error('Nie znaleziono elementu listy modeli w DOM');
+      return;
+    }
+
+    modelsListElement.innerHTML = '';
+
+    models.forEach((model) => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = model.name;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadModel(model.path);
+      });
+      li.appendChild(a);
+      modelsListElement.appendChild(li);
+    });
+  });
 
   // Obsługa zmiany rozmiaru okna
   window.addEventListener('resize', onWindowResize, false);
@@ -607,6 +824,34 @@ function setupUI() {
       stats.dom.style.display =
         stats.dom.style.display === 'none' ? 'block' : 'none';
     });
+  }
+
+  const lightingSection = document.querySelector('.lighting-section');
+  if (lightingSection) {
+    const scenesHeader = document.createElement('h2');
+    scenesHeader.textContent = 'Wybór sceny';
+
+    const scenesContainer = document.createElement('div');
+    scenesContainer.className = 'scenes-container';
+
+    const scenesSelect = document.createElement('select');
+    scenesSelect.id = 'scenesSelect';
+    scenesSelect.className = 'scenes-select';
+
+    scenesSelect.addEventListener('change', (e) => {
+      const selectedScene = e.target.value;
+      loadSceneConfig(selectedScene).then((config) => {
+        if (config) {
+          applySceneConfig(config);
+        }
+      });
+    });
+
+    scenesContainer.appendChild(scenesSelect);
+    lightingSection.prepend(scenesContainer);
+    lightingSection.prepend(scenesHeader);
+
+    loadAvailableScenes();
   }
 }
 

@@ -11,7 +11,7 @@
   },
   "scale": {
     "method": "fixed",
-    "fixedScale": 0.01
+    "fixedScale": 0.025
   },
   "rotation": {
     "x": 0,
