@@ -279,67 +279,7 @@ function applyLightingConfig(config) {
 // Funkcja aktualizująca kontrolki w interfejsie
 function updateLightingControls() {
   const lightingControls = document.querySelector('.lighting-controls');
-
-  // Zachowujemy oryginalne checkboxy
-  const mainLight = document.createElement('div');
-  mainLight.className = 'light-option';
-  mainLight.innerHTML = `
-    <label>
-      <input type="checkbox" checked />
-      Światło główne
-    </label>
-  `;
-
-  const auxiliaryLight = document.createElement('div');
-  auxiliaryLight.className = 'light-option';
-  auxiliaryLight.innerHTML = `
-    <label>
-      <input type="checkbox" checked />
-      Światło pomocnicze
-    </label>
-  `;
-
-  const intensityControl = document.createElement('div');
-  intensityControl.className = 'light-intensity';
-  intensityControl.innerHTML = `
-    <label>
-      Intensywność
-      <input type="range" min="0" max="100" value="50" />
-    </label>
-  `;
-
-  lightingControls.appendChild(mainLight);
-  lightingControls.appendChild(auxiliaryLight);
-  lightingControls.appendChild(intensityControl);
-
-  // Dodajemy obsługę zdarzeń dla checkboxów
-  mainLight.querySelector('input').addEventListener('change', (e) => {
-    if (lights.keyLight) {
-      lights.keyLight.visible = e.target.checked;
-      if (lights.keyLightSphere)
-        lights.keyLightSphere.visible = e.target.checked;
-    }
-  });
-
-  auxiliaryLight.querySelector('input').addEventListener('change', (e) => {
-    if (lights.fillLight) {
-      lights.fillLight.visible = e.target.checked;
-      if (lights.fillLightSphere)
-        lights.fillLightSphere.visible = e.target.checked;
-    }
-    if (lights.rimLight) {
-      lights.rimLight.visible = e.target.checked;
-      if (lights.rimLightSphere)
-        lights.rimLightSphere.visible = e.target.checked;
-    }
-  });
-
-  intensityControl.querySelector('input').addEventListener('input', (e) => {
-    const intensity = e.target.value / 100;
-    if (lights.keyLight) lights.keyLight.intensity = intensity * 2.0;
-    if (lights.fillLight) lights.fillLight.intensity = intensity * 0.4;
-    if (lights.rimLight) lights.rimLight.intensity = intensity * 0.3;
-  });
+  // Funkcja jest pusta, ponieważ usunęliśmy wszystkie kontrolki
 }
 
 // Funkcja tworząca etykiety osi
