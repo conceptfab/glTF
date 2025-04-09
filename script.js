@@ -42,7 +42,13 @@ async function loadSceneConfig(sceneName = 'default') {
   try {
     console.log('🔄 Ładowanie konfiguracji sceny:', `scenes/${sceneName}.json`);
     const response = await fetch(`scenes/${sceneName}.json`);
-    if (!response.ok) throw new Error('Nie można załadować konfiguracji sceny');
+
+    if (!response.ok) {
+      throw new Error(
+        `Nie można załadować konfiguracji sceny (status ${response.status})`
+      );
+    }
+
     const config = await response.json();
     console.log('✅ Załadowana konfiguracja:', config);
     currentSceneConfig = config;
@@ -56,6 +62,7 @@ async function loadSceneConfig(sceneName = 'default') {
     return config;
   } catch (error) {
     console.error('❌ Błąd wczytywania konfiguracji sceny:', error);
+    // Zwróć domyślną konfigurację lub null
     return null;
   }
 }
@@ -183,6 +190,34 @@ function updateLightingControls() {
   });
 }
 
+// Funkcja tworząca etykiety osi
+function createAxisLabel(text, color, position, rotation) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = 'Bold 80px Arial';
+  ctx.fillStyle = '#' + new THREE.Color(color).getHexString();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture });
+  const sprite = new THREE.Sprite(material);
+
+  sprite.position.copy(position);
+  sprite.rotation.copy(rotation);
+  sprite.scale.set(1, 1, 1);
+
+  axis.add(sprite);
+  return sprite;
+}
+
 function createAxis() {
   // Tworzymy grupę dla osi
   axis = new THREE.Group();
@@ -275,6 +310,44 @@ function createAxis() {
   return axis;
 }
 
+// Funkcja ładująca listę modeli
+async function loadModelsList() {
+  try {
+    const response = await fetch('models/list.json');
+    if (!response.ok) throw new Error('Nie można załadować listy modeli');
+
+    const modelsList = await response.json();
+    const modelsListElement = document.getElementById('modelsList');
+
+    if (!modelsListElement) {
+      console.error('Nie znaleziono elementu listy modeli w DOM');
+      return;
+    }
+
+    modelsListElement.innerHTML = '';
+
+    modelsList.forEach((model) => {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = model.name;
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        loadModel(model.path);
+      });
+      li.appendChild(a);
+      modelsListElement.appendChild(li);
+    });
+  } catch (error) {
+    console.error('Błąd ładowania listy modeli:', error);
+    const modelsListElement = document.getElementById('modelsList');
+    if (modelsListElement) {
+      modelsListElement.innerHTML =
+        '<div class="error">Nie można załadować listy modeli</div>';
+    }
+  }
+}
+
 async function init() {
   console.log('🚀 Inicjalizacja aplikacji...');
 
@@ -287,6 +360,12 @@ async function init() {
   // Tworzenie sceny
   scene = new THREE.Scene();
   console.log('🎬 Utworzono scenę');
+
+  // Dodanie czerwonego sześcianu
+  const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+  scene.add(cube);
 
   // Wczytanie i aplikacja konfiguracji sceny
   console.log('📥 Wczytuję konfigurację sceny...');
@@ -712,6 +791,9 @@ async function loadModel(modelPath) {
   const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'));
 
   try {
+    // Ładowanie konfiguracji modelu
+    const config = await loadModelConfig(modelDir);
+
     const loader = new THREE.GLTFLoader();
 
     loader.load(
@@ -735,7 +817,21 @@ async function loadModel(modelPath) {
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
 
-        // Ponowne obliczenie bounding boxa
+        // Zastosowanie skalowania zgodnie z konfiguracją
+        if (config && config.scale) {
+          if (config.scale.method === 'fixed') {
+            const scale = (config.scale.fixedScale || 1.0) * 0.1; // 10x mniejsza skala
+            model.scale.set(scale, scale, scale);
+          } else if (config.scale.method === 'auto') {
+            // Obliczanie skali automatycznej na podstawie największego wymiaru
+            const maxDimension = Math.max(size.x, size.y, size.z);
+            const targetSize = (config.scale.targetSize || 1.0) * 0.1; // 10x mniejsza skala
+            const scale = targetSize / maxDimension;
+            model.scale.set(scale, scale, scale);
+          }
+        }
+
+        // Ponowne obliczenie bounding boxa po skalowaniu
         box.setFromObject(model);
 
         // Ustawienie pozycji modelu tak, aby najniższy punkt był w (0,0,0)
