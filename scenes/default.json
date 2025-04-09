@@ -1,0 +1,84 @@
+{
+  "name": "Default Scene",
+  "background": {
+    "color": "#121212"
+  },
+  "renderer": {
+    "antialias": true,
+    "logarithmicDepthBuffer": true,
+    "shadowMap": {
+      "enabled": true,
+      "type": "PCFSoft",
+      "width": 4096,
+      "height": 4096,
+      "radius": 8,
+      "blurSamples": 16,
+      "bias": -0.0001,
+      "normalBias": 0.02
+    },
+    "outputEncoding": "sRGB",
+    "toneMapping": "ACESFilmic",
+    "toneMappingExposure": 1.0,
+    "pixelRatio": "devicePixelRatio"
+  },
+  "materials": {
+    "floor": {
+      "type": "MeshStandardMaterial",
+      "color": "#000000",
+      "roughness": 0.99,
+      "metalness": 0.0,
+      "transparent": true,
+      "alphaMap": "tex/opacity_floor.jpg"
+    }
+  },
+  "cameras": {
+    "default": {
+      "position": { "x": 5, "y": 5, "z": 5 },
+      "target": { "x": 0, "y": 0, "z": 0 }
+    },
+    "views": {
+      "Przód": {
+        "position": { "x": 0, "y": 5, "z": 10 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "Tył": {
+        "position": { "x": 0, "y": 5, "z": -10 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      },
+      "Góra": {
+        "position": { "x": 0, "y": 10, "z": 0 },
+        "target": { "x": 0, "y": 0, "z": 0 }
+      }
+    }
+  },
+  "lights": {
+    "ambient": {
+      "type": "AmbientLight",
+      "color": "#ffffff",
+      "intensity": 0.3,
+      "enabled": true
+    },
+    "key": {
+      "type": "DirectionalLight",
+      "color": "#ffffff",
+      "intensity": 2.0,
+      "position": { "x": 3, "y": 3, "z": 2 },
+      "castShadow": true,
+      "enabled": true
+    },
+    "fill": {
+      "type": "DirectionalLight",
+      "color": "#ffffff",
+      "intensity": 0.4,
+      "position": { "x": -3, "y": 2, "z": -2 },
+      "enabled": true
+    },
+    "rim": {
+      "type": "DirectionalLight",
+      "color": "#ffffff",
+      "intensity": 0.3,
+      "position": { "x": 0, "y": 3, "z": -4 },
+      "enabled": true
+    }
+  }
+}

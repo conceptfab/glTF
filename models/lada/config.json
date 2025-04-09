@@ -1,0 +1,23 @@
+{
+  "center": {
+    "x": true,
+    "y": true,
+    "z": true
+  },
+  "position": {
+    "method": "floor",
+    "value": 0
+  },
+  "scale": {
+    "method": "auto",
+    "targetSize": 100,
+    "maxSize": 200,
+    "minSize": 50,
+    "fixedScale": 1
+  },
+  "rotation": {
+    "x": 0,
+    "y": -90,
+    "z": 0
+  }
+}
