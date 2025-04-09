@@ -1,21 +1,21 @@
 {
-    "center": {
-        "x": true,
-        "y": true,
-        "z": true
-    },
-    "position": {
-        "method": "floor",
-        "value": 0,
-        "yOffset": 0
-    },
-    "scale": {
-        "method": "fixed",
-        "fixedScale": 0.025
-    },
-    "rotation": {
-        "x": 0,
-        "y": 0,
-        "z": 0
-    }
+  "center": {
+    "x": true,
+    "y": true,
+    "z": true
+  },
+  "position": {
+    "method": "floor",
+    "value": 0,
+    "yOffset": 0
+  },
+  "scale": {
+    "method": "fixed",
+    "fixedScale": 0.1
+  },
+  "rotation": {
+    "x": 0,
+    "y": 0,
+    "z": 0
+  }
 }

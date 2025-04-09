@@ -1,0 +1,16 @@
+[
+  {
+    "name": "GCS 13 Rel z Bel",
+    "gltf_files": [
+      "GCS 13 Rel z Bel/GCS 13 Rel z Bel.gltf"
+    ],
+    "config_path": "GCS 13 Rel z Bel/config.json"
+  },
+  {
+    "name": "lada",
+    "gltf_files": [
+      "lada/lada.gltf"
+    ],
+    "config_path": "lada/config.json"
+  }
+]

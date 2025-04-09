@@ -6,37 +6,6 @@ let modelConfigs = new Map();
 let axis; // Zmienna dla grupy osi
 let currentSceneConfig = null;
 
-function createGradientTexture(
-  size = 512,
-  innerRadius = 0.1,
-  outerRadius = 1.0
-) {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-
-  // Tworzenie gradientu radialnego
-  const gradient = ctx.createRadialGradient(
-    size / 2,
-    size / 2,
-    0, // Początek gradientu (środek)
-    size / 2,
-    size / 2,
-    (size / 2) * outerRadius // Koniec gradientu (krawędzie)
-  );
-
-  // Definicja punktów przejścia gradientu
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); // Środek - w pełni widoczny
-  gradient.addColorStop(innerRadius, 'rgba(255, 255, 255, 1)'); // Początek rozmycia
-  gradient.addColorStop(outerRadius, 'rgba(255, 255, 255, 0)'); // Krawędzie - w pełni przezroczyste
-
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
-
-  return new THREE.CanvasTexture(canvas);
-}
-
 // Funkcja pobierająca listę dostępnych plików konfiguracji scen
 async function loadScenesList() {
   try {
@@ -248,38 +217,9 @@ function applyLightingConfig(config) {
       default:
         return;
     }
-
-    if (lightConfig.position) {
-      light.position.set(
-        lightConfig.position.x,
-        lightConfig.position.y,
-        lightConfig.position.z
-      );
-    }
-
-    light.castShadow = lightConfig.castShadow || false;
-    light.visible = lightConfig.enabled;
-
-    lights[key] = light;
     scene.add(light);
-
-    // Tworzenie pomocniczych wskaźników świateł (tylko dla świateł kierunkowych)
-    if (lightConfig.type === 'DirectionalLight') {
-      const helper = new THREE.DirectionalLightHelper(light, 1);
-      helper.visible = false; // Domyślnie ukryte
-      scene.add(helper);
-      lights[key + 'Helper'] = helper;
-    }
+    lights[key] = light;
   });
-
-  // Aktualizacja kontrolek w interfejsie
-  updateLightingControls();
-}
-
-// Funkcja aktualizująca kontrolki w interfejsie
-function updateLightingControls() {
-  const lightingControls = document.querySelector('.lighting-controls');
-  // Funkcja jest pusta, ponieważ usunęliśmy wszystkie kontrolki
 }
 
 // Funkcja tworząca etykiety osi
@@ -405,71 +345,62 @@ function createAxis() {
 // Funkcja przeszukująca folder w poszukiwaniu modeli
 async function scanModelsDirectory() {
   try {
+    console.log('🔍 Rozpoczynam wczytywanie modeli...');
+
+    // Wczytaj plik index.json
+    const response = await fetch('models/index.json');
+    if (!response.ok) {
+      console.error('❌ Nie można wczytać pliku index.json');
+      return [];
+    }
+
+    const modelsList = await response.json();
+    console.log(`📦 Znaleziono ${modelsList.length} modeli w index.json`);
+
     const models = [];
 
-    // Funkcja pomocnicza do przeszukiwania podfolderów
-    async function scanDirectory(directory) {
+    // Przetwórz każdy model z listy
+    for (const modelInfo of modelsList) {
+      console.log(`\n🔄 Przetwarzam model: ${modelInfo.name}`);
+
+      // Sprawdź czy istnieje plik config.json
+      console.log(`⚙️ Sprawdzam config.json: ${modelInfo.config_path}`);
+
+      let config = null;
       try {
-        // Dodajemy trailing slash jeśli go nie ma
-        if (!directory.endsWith('/')) {
-          directory += '/';
-        }
-
-        const response = await fetch(directory);
-        if (!response.ok) {
-          console.warn(`⚠️ Nie można otworzyć katalogu ${directory}`);
-          return;
-        }
-
-        const text = await response.text();
-        const parser = new DOMParser();
-        const html = parser.parseFromString(text, 'text/html');
-
-        // Znajdź wszystkie linki do plików
-        const links = Array.from(html.querySelectorAll('a'))
-          .map((a) => a.getAttribute('href'))
-          .filter((href) => href && !href.startsWith('?') && href !== '../');
-
-        for (const link of links) {
-          const fullPath = `${directory}${link}`;
-
-          // Jeśli to folder, przeszukaj go rekurencyjnie
-          if (link.endsWith('/')) {
-            await scanDirectory(fullPath);
-          }
-          // Jeśli to plik modelu, dodaj go do listy
-          else if (
-            link.toLowerCase().endsWith('.glb') ||
-            link.toLowerCase().endsWith('.gltf')
-          ) {
-            const modelName = link
-              .split('/')
-              .pop()
-              .replace(/\.(glb|gltf)$/i, '');
-            const modelPath = fullPath;
-
-            models.push({
-              name: modelName,
-              path: modelPath,
-              directory: directory,
-            });
-          }
+        const configResponse = await fetch(`models/${modelInfo.config_path}`);
+        if (configResponse.ok) {
+          config = await configResponse.json();
+          console.log('✅ Pomyślnie wczytano config.json');
+        } else {
+          console.log('⚠️ Brak pliku config.json dla modelu');
         }
       } catch (error) {
         console.error(
-          `❌ Błąd podczas skanowania katalogu ${directory}:`,
+          `❌ Błąd wczytywania config.json dla modelu ${modelInfo.name}:`,
           error
         );
       }
+
+      // Dodaj każdy plik gltf jako osobny model
+      for (const gltfFile of modelInfo.gltf_files) {
+        const modelData = {
+          name: modelInfo.name,
+          path: `models/${gltfFile}`,
+          directory: `models/${gltfFile.split('\\')[0]}/`,
+          config: config,
+        };
+
+        console.log('➕ Dodano model do listy:', modelData);
+        models.push(modelData);
+      }
     }
 
-    // Rozpocznij skanowanie od głównego katalogu models
-    await scanDirectory('models/');
-
-    console.log('✅ Znaleziono modele:', models);
+    console.log('\n✅ Zakończono wczytywanie modeli');
+    console.log(`📊 Łącznie znaleziono ${models.length} modeli`);
     return models;
   } catch (error) {
-    console.error('❌ Błąd podczas skanowania katalogów modeli:', error);
+    console.error('❌ BŁĄD podczas wczytywania modeli:', error);
     return [];
   }
 }
@@ -800,16 +731,6 @@ function setupLights() {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
   scene.add(ambientLight);
 
-  // Funkcja pomocnicza do tworzenia kuli świetlnej
-  function createLightSphere(position, color = 0xffff00) {
-    const sphereGeometry = new THREE.SphereGeometry(0.2, 16, 16);
-    const sphereMaterial = new THREE.MeshBasicMaterial({ color: color });
-    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    sphere.position.copy(position);
-    scene.add(sphere);
-    return sphere;
-  }
-
   // Światło główne (key light)
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
   keyLight.position.set(3, 3, 2);
@@ -827,54 +748,23 @@ function setupLights() {
   keyLight.shadow.camera.top = 100;
   keyLight.shadow.camera.bottom = -100;
   scene.add(keyLight);
-  const keyLightSphere = createLightSphere(keyLight.position, 0xff0000);
 
   // Światło wypełniające (fill light)
   const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
   fillLight.position.set(-3, 2, -2);
   scene.add(fillLight);
-  const fillLightSphere = createLightSphere(fillLight.position, 0x00ff00);
 
   // Światło konturowe (rim light)
   const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
   rimLight.position.set(0, 3, -4);
   scene.add(rimLight);
-  const rimLightSphere = createLightSphere(rimLight.position, 0x0000ff);
 
   return {
     ambientLight,
     keyLight,
     fillLight,
     rimLight,
-    keyLightSphere,
-    fillLightSphere,
-    rimLightSphere,
   };
-}
-
-function setLightingVariant(variant) {
-  // Reset wszystkich świateł
-  lights.ambientLight.intensity = 0;
-  lights.keyLight.intensity = 0;
-  lights.fillLight.intensity = 0;
-  lights.rimLight.intensity = 0;
-
-  // Ukryj/pokaż kule świetlne
-  lights.keyLightSphere.visible = false;
-  lights.fillLightSphere.visible = false;
-  lights.rimLightSphere.visible = false;
-
-  switch (variant) {
-    case 2: // Oświetlenie studyjne
-      lights.ambientLight.intensity = 0.3;
-      lights.keyLight.intensity = 2.0;
-      lights.fillLight.intensity = 0.4;
-      lights.rimLight.intensity = 0.3;
-      lights.keyLightSphere.visible = true;
-      lights.fillLightSphere.visible = true;
-      lights.rimLightSphere.visible = true;
-      break;
-  }
 }
 
 function setCameraPosition(viewName) {
@@ -909,11 +799,10 @@ function updateViewButtons(activeView) {
 
 // Funkcja pomocnicza do obliczania rozmiaru modelu
 function getModelSize() {
-  if (!model) return 10;
+  if (!model) return { x: 10, y: 10, z: 10 };
 
   const box = new THREE.Box3().setFromObject(model);
-  const size = box.getSize(new THREE.Vector3());
-  return Math.max(size.x, size.y, size.z);
+  return box.getSize(new THREE.Vector3());
 }
 
 function onWindowResize() {
@@ -936,53 +825,58 @@ document.addEventListener('DOMContentLoaded', init);
 // Funkcja ładująca konfigurację modelu
 async function loadModelConfig(modelDir) {
   try {
-    console.log(`🔍 Próba ładowania konfiguracji z: ${modelDir}/config.json`);
-    const response = await fetch(`${modelDir}/config.json`);
-    if (!response.ok) {
-      console.warn(
-        `⚠️ Nie znaleziono pliku konfiguracyjnego dla ${modelDir}, używam domyślnych ustawień`
-      );
-      return {
-        center: { x: true, y: true, z: true },
-        position: {
-          method: 'floor',
-          value: 0,
-        },
-        scale: {
-          method: 'fixed',
-          fixedScale: 0.2,
-        },
-        rotation: {
-          x: 0,
-          y: 0,
-          z: 0,
-        },
-      };
+    // Sprawdź czy mamy już załadowaną konfigurację dla tego modelu
+    if (modelConfigs.has(modelDir)) {
+      console.log(`✅ Używam zapisanej konfiguracji dla ${modelDir}`);
+      return modelConfigs.get(modelDir);
     }
 
-    const config = await response.json();
-    console.log(`✅ Załadowano konfigurację dla ${modelDir}:`, config);
-    modelConfigs.set(modelDir, config);
-    return config;
+    // Pobierz listę modeli
+    const models = await scanModelsDirectory();
+    const modelInfo = models.find((m) => m.directory === modelDir);
+
+    if (!modelInfo) {
+      console.warn(
+        `⚠️ Nie znaleziono informacji o modelu w katalogu ${modelDir}`
+      );
+      return getDefaultConfig();
+    }
+
+    if (!modelInfo.config) {
+      console.warn(`⚠️ Brak konfiguracji dla modelu w katalogu ${modelDir}`);
+      return getDefaultConfig();
+    }
+
+    console.log(
+      `✅ Załadowano konfigurację dla ${modelDir}:`,
+      modelInfo.config
+    );
+    modelConfigs.set(modelDir, modelInfo.config);
+    return modelInfo.config;
   } catch (error) {
     console.error(`❌ Błąd ładowania konfiguracji dla ${modelDir}:`, error);
-    return {
-      center: { x: true, y: true, z: true },
-      position: {
-        method: 'floor',
-        value: 0,
-      },
-      scale: {
-        method: 'fixed',
-        fixedScale: 0.2,
-      },
-      rotation: {
-        x: 0,
-        y: 0,
-        z: 0,
-      },
-    };
+    return getDefaultConfig();
   }
+}
+
+// Funkcja pomocnicza zwracająca domyślną konfigurację
+function getDefaultConfig() {
+  return {
+    center: { x: true, y: true, z: true },
+    position: {
+      method: 'floor',
+      value: 0,
+    },
+    scale: {
+      method: 'fixed',
+      fixedScale: 0.2,
+    },
+    rotation: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+  };
 }
 
 // Funkcja do tworzenia wizualizacji bounding boxa
@@ -1009,7 +903,11 @@ async function loadModel(modelPath) {
   }
 
   currentModelPath = modelPath;
-  const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'));
+  // Konwertuj ścieżkę do formatu URL
+  const modelDir = modelPath
+    .substring(0, modelPath.lastIndexOf('/'))
+    .replace(/\\/g, '/');
+  const modelName = modelPath.split(/[\\/]/).pop();
 
   try {
     // Ładowanie konfiguracji modelu
@@ -1017,7 +915,12 @@ async function loadModel(modelPath) {
     console.log(`📋 Konfiguracja modelu:`, config);
 
     const loader = new THREE.GLTFLoader();
-    const gltf = await loader.loadAsync(modelPath);
+
+    // Ustawienie ścieżki bazowej dla ładowania zasobów
+    loader.setPath(modelDir + '/');
+
+    // Używamy tylko nazwy pliku, ponieważ ścieżka bazowa jest już ustawiona
+    const gltf = await loader.loadAsync(modelName);
     model = gltf.scene;
 
     // Obliczanie rozmiaru modelu
@@ -1027,12 +930,10 @@ async function loadModel(modelPath) {
     // Zastosowanie skalowania zgodnie z konfiguracją
     if (config && config.scale) {
       if (config.scale.method === 'fixed') {
-        // Używamy dokładnie wartości fixedScale bez mnożenia przez 0.1
         const scale = config.scale.fixedScale || 1.0;
         console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
         model.scale.set(scale, scale, scale);
       } else if (config.scale.method === 'auto') {
-        // Obliczanie skali automatycznej na podstawie największego wymiaru
         const maxDimension = Math.max(size.x, size.y, size.z);
         const targetSize = config.scale.targetSize || 100;
         const scale = targetSize / maxDimension;
