@@ -755,14 +755,52 @@ document.addEventListener('DOMContentLoaded', init);
 // Funkcja ładująca konfigurację modelu
 async function loadModelConfig(modelDir) {
   try {
+    console.log(`🔍 Próba ładowania konfiguracji z: ${modelDir}/config.json`);
     const response = await fetch(`${modelDir}/config.json`);
-    if (!response.ok) throw new Error('Nie znaleziono pliku konfiguracyjnego');
+    if (!response.ok) {
+      console.warn(
+        `⚠️ Nie znaleziono pliku konfiguracyjnego dla ${modelDir}, używam domyślnych ustawień`
+      );
+      return {
+        center: { x: true, y: true, z: true },
+        position: {
+          method: 'floor',
+          value: 0,
+        },
+        scale: {
+          method: 'fixed',
+          fixedScale: 0.2,
+        },
+        rotation: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+      };
+    }
+
     const config = await response.json();
+    console.log(`✅ Załadowano konfigurację dla ${modelDir}:`, config);
     modelConfigs.set(modelDir, config);
     return config;
   } catch (error) {
-    console.warn(`Błąd ładowania konfiguracji dla ${modelDir}:`, error);
-    return null;
+    console.error(`❌ Błąd ładowania konfiguracji dla ${modelDir}:`, error);
+    return {
+      center: { x: true, y: true, z: true },
+      position: {
+        method: 'floor',
+        value: 0,
+      },
+      scale: {
+        method: 'fixed',
+        fixedScale: 0.2,
+      },
+      rotation: {
+        x: 0,
+        y: 0,
+        z: 0,
+      },
+    };
   }
 }
 
@@ -780,6 +818,8 @@ async function loadModel(modelPath) {
     return;
   }
 
+  console.log(`🔄 Ładowanie modelu: ${modelPath}`);
+
   if (model) {
     scene.remove(model);
     if (model.boundingBoxHelper) {
@@ -793,68 +833,53 @@ async function loadModel(modelPath) {
   try {
     // Ładowanie konfiguracji modelu
     const config = await loadModelConfig(modelDir);
+    console.log(`📋 Konfiguracja modelu:`, config);
 
     const loader = new THREE.GLTFLoader();
+    const gltf = await loader.loadAsync(modelPath);
+    model = gltf.scene;
 
-    loader.load(
-      modelPath,
-      function (gltf) {
-        model = gltf.scene;
+    // Obliczanie rozmiaru modelu
+    const size = getModelSize();
+    console.log(`📏 Rozmiar modelu:`, size);
 
-        // Włączanie cieni dla wszystkich elementów modelu
-        model.traverse((node) => {
-          if (node.isMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
-            if (node.material) {
-              node.material.needsUpdate = true;
-              node.material.side = THREE.DoubleSide;
-            }
-          }
-        });
-
-        // Obliczanie wymiarów i środka modelu
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-
-        // Zastosowanie skalowania zgodnie z konfiguracją
-        if (config && config.scale) {
-          if (config.scale.method === 'fixed') {
-            const scale = (config.scale.fixedScale || 1.0) * 0.1; // 10x mniejsza skala
-            model.scale.set(scale, scale, scale);
-          } else if (config.scale.method === 'auto') {
-            // Obliczanie skali automatycznej na podstawie największego wymiaru
-            const maxDimension = Math.max(size.x, size.y, size.z);
-            const targetSize = (config.scale.targetSize || 1.0) * 0.1; // 10x mniejsza skala
-            const scale = targetSize / maxDimension;
-            model.scale.set(scale, scale, scale);
-          }
-        }
-
-        // Ponowne obliczenie bounding boxa po skalowaniu
-        box.setFromObject(model);
-
-        // Ustawienie pozycji modelu tak, aby najniższy punkt był w (0,0,0)
-        model.position.y = -box.min.y;
-
-        scene.add(model);
-
-        // Dodanie wizualizacji bounding boxa
-        model.boundingBoxHelper = createBoundingBoxHelper(model);
-        scene.add(model.boundingBoxHelper);
-
-        // Ustawienie widoczności bounding boxa zgodnie z globalnym ustawieniem
-        const showBoundingBoxCheckbox =
-          document.getElementById('showBoundingBox');
-        if (showBoundingBoxCheckbox) {
-          model.boundingBoxHelper.visible = showBoundingBoxCheckbox.checked;
-        }
-      },
-      undefined,
-      function (error) {
-        console.error('Błąd podczas wczytywania modelu:', error);
+    // Zastosowanie skalowania zgodnie z konfiguracją
+    if (config && config.scale) {
+      if (config.scale.method === 'fixed') {
+        // Używamy dokładnie wartości fixedScale bez mnożenia przez 0.1
+        const scale = config.scale.fixedScale || 1.0;
+        console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
+        model.scale.set(scale, scale, scale);
+      } else if (config.scale.method === 'auto') {
+        // Obliczanie skali automatycznej na podstawie największego wymiaru
+        const maxDimension = Math.max(size.x, size.y, size.z);
+        const targetSize = config.scale.targetSize || 100;
+        const scale = targetSize / maxDimension;
+        console.log(
+          `🔍 Używam automatycznej skali: ${scale} (metoda: auto, targetSize: ${targetSize}, maxDimension: ${maxDimension})`
+        );
+        model.scale.set(scale, scale, scale);
       }
-    );
+    }
+
+    // Ponowne obliczenie bounding boxa po skalowaniu
+    const box = new THREE.Box3().setFromObject(model);
+    box.setFromObject(model);
+
+    // Ustawienie pozycji modelu tak, aby najniższy punkt był w (0,0,0)
+    model.position.y = -box.min.y;
+
+    scene.add(model);
+
+    // Dodanie wizualizacji bounding boxa
+    model.boundingBoxHelper = createBoundingBoxHelper(model);
+    scene.add(model.boundingBoxHelper);
+
+    // Ustawienie widoczności bounding boxa zgodnie z globalnym ustawieniem
+    const showBoundingBoxCheckbox = document.getElementById('showBoundingBox');
+    if (showBoundingBoxCheckbox) {
+      model.boundingBoxHelper.visible = showBoundingBoxCheckbox.checked;
+    }
   } catch (error) {
     console.error('Błąd podczas ładowania modelu:', error);
   }
