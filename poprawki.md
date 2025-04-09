@@ -1,278 +1,408 @@
-Zmiana w pliku script.js
-Zmiana 1: Funkcja do ładowania listy plików scen
-javascript// Funkcja pobierająca listę dostępnych plików konfiguracji scen
-async function loadScenesList() {
-  try {
-    // Możemy użyć fetch aby pobrać listę plików JSON z określonego katalogu
-    // W tym przypadku zakładamy, że mamy statyczną listę plików scen
-    // Ponieważ przeglądanie zawartości katalogu przez JS jest ograniczone przez zabezpieczenia
-    const scenesList = ['default']; // Domyślnie zawsze jest scena default
-    
-    // Próba pobrania dodatkowych scen, jeśli istnieje plik scenes/list.json
-    try {
-      const response = await fetch('scenes/list.json');
-      if (response.ok) {
-        const additionalScenes = await response.json();
-        scenesList.push(...additionalScenes.filter(scene => scene !== 'default'));
-      }
-    } catch (listError) {
-      console.warn('Nie znaleziono listy dodatkowych scen, używam tylko sceny domyślnej');
-    }
-    
-    return scenesList;
-  } catch (error) {
-    console.error('❌ Błąd ładowania listy scen:', error);
-    return ['default']; // Zawsze zwracamy domyślną scenę
-  }
-}
-Zmiana 2: Modyfikacja funkcji setupUI() aby dodać interfejs wyboru scen
-javascriptfunction setupUI() {
-  // Istniejący kod...
-  
-  // Dodanie sekcji wyboru scen w panelu oświetlenia
-  const lightingSection = document.querySelector('.lighting-section');
-  if (lightingSection) {
-    // Utworzenie kontenera dla wyboru scen
-    const scenesHeader = document.createElement('h2');
-    scenesHeader.textContent = 'Wybór sceny';
-    
-    const scenesContainer = document.createElement('div');
-    scenesContainer.className = 'scenes-container';
-    
-    const scenesSelect = document.createElement('select');
-    scenesSelect.id = 'scenesSelect';
-    scenesSelect.className = 'scenes-select';
-    
-    // Dodanie obsługi zmiany sceny
-    scenesSelect.addEventListener('change', (e) => {
-      const selectedScene = e.target.value;
-      loadSceneConfig(selectedScene).then(config => {
-        if (config) {
-          applySceneConfig(config);
-        }
-      });
-    });
-    
-    scenesContainer.appendChild(scenesSelect);
-    lightingSection.prepend(scenesContainer);
-    lightingSection.prepend(scenesHeader);
-    
-    // Załadowanie listy scen
-    loadAvailableScenes();
-  }
-  
-  // Pozostały istniejący kod...
-}
-Zmiana 3: Funkcja do ładowania dostępnych scen i populacji interfejsu
-javascript// Funkcja ładująca i populująca listę dostępnych scen
-async function loadAvailableScenes() {
-  try {
-    // Pobierz listę scen
-    const scenesList = await loadScenesList();
-    
-    // Populacja selektora scen
-    const scenesSelect = document.getElementById('scenesSelect');
-    if (scenesSelect) {
-      scenesSelect.innerHTML = '';
-      
-      scenesList.forEach(sceneName => {
-        const option = document.createElement('option');
-        option.value = sceneName;
-        // Formatowanie nazwy sceny (pierwsza litera wielka, podkreślenia zamienione na spacje)
-        const displayName = sceneName
-          .replace(/_/g, ' ')
-          .replace(/\b\w/g, char => char.toUpperCase());
-        
-        option.textContent = displayName;
-        scenesSelect.appendChild(option);
-      });
-      
-      // Ustawienie domyślnej sceny
-      if (currentSceneConfig && currentSceneConfig.name) {
-        // Znajdź odpowiednią opcję dla aktualnie załadowanej sceny
-        const sceneName = currentSceneConfig.name.toLowerCase().replace(/ /g, '_');
-        const matchingOption = Array.from(scenesSelect.options).find(
-          option => option.value.toLowerCase() === sceneName
-        );
-        
-        if (matchingOption) {
-          scenesSelect.value = matchingOption.value;
-        }
-      }
-    }
-  } catch (error) {
-    console.error('❌ Błąd ładowania listy scen:', error);
-  }
-}
-Zmiana 4: Funkcja do aplikowania konfiguracji sceny
-javascript// Funkcja do aplikowania konfiguracji sceny
-function applySceneConfig(config) {
-  if (!config) return;
-  
-  console.log('🔄 Aplikowanie konfiguracji sceny:', config.name || 'bez nazwy');
-  
-  // Ustawienie tła sceny
-  if (config.background && config.background.color) {
-    scene.background = new THREE.Color(config.background.color);
-    console.log('🎨 Ustawiono kolor tła:', config.background.color);
-  }
-  
-  // Ustawienie świateł
-  applyLightingConfig(config);
-  
-  // Ustawienie kamery
-  if (config.cameras && config.cameras.default && controls) {
-    const defaultCam = config.cameras.default;
-    console.log('📷 Ustawiam domyślną pozycję kamery:', defaultCam.position);
-    camera.position.set(
-      defaultCam.position.x,
-      defaultCam.position.y,
-      defaultCam.position.z
-    );
+Na podstawie dostarczonych dokumentów przeanalizowałem kod i przygotowałem zmiany potrzebne do poprawnego działania funkcji przeszukiwania folderów z modelami. Oto niezbędne modyfikacje:
+Zmiany w pliku generate_config.py
+pythondef generate_config(gltf_file):
+    """Generuje plik konfiguracyjny dla modelu GLTF"""
+    # Tworzenie katalogu dla modelu jeśli nie istnieje
+    model_dir = gltf_file.parent
+    if not model_dir.exists():
+        model_dir.mkdir(parents=True)
 
-    if (defaultCam.target) {
-      console.log('🎯 Ustawiam domyślny cel kamery:', defaultCam.target);
-      controls.target.set(
-        defaultCam.target.x,
-        defaultCam.target.y,
-        defaultCam.target.z
-      );
-      controls.update();
+    # Tworzenie domyślnej konfiguracji
+    config = {
+        "center": {"x": True, "y": True, "z": True},
+        "position": {
+            "method": "floor",  # Możliwe wartości: "floor", "center", "topEdge"
+            "value": 0,
+            "yOffset": 0,  # Dodanie brakującego parametru yOffset
+        },
+        "scale": {
+            "method": "fixed",  # Zmiana z "auto" na "fixed" zgodnie z plikiem config.json
+            "fixedScale": 0.025,  # Zmiana wartości zgodnie z plikiem config.json
+        },
+        "rotation": {
+            "x": 0,  # Obrót wokół osi X w stopniach
+            "y": 0,  # Obrót wokół osi Y w stopniach
+            "z": 0,  # Obrót wokół osi Z w stopniach
+        },
     }
+
+    # Zapisanie konfiguracji do pliku
+    config_path = model_dir / "config.json"
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4)
+
+    print(f"Wygenerowano konfigurację dla {gltf_file.name}")
+Zmiany w pliku script.js
+1. Modyfikacja funkcji scanModelsDirectory
+javascript// Funkcja przeszukująca folder w poszukiwaniu modeli
+async function scanModelsDirectory() {
+  try {
+    const models = [];
+
+    // Funkcja pomocnicza do przeszukiwania podfolderów
+    async function scanDirectory(directory) {
+      try {
+        // Dodajemy trailing slash jeśli go nie ma
+        if (!directory.endsWith('/')) {
+          directory += '/';
+        }
+
+        const response = await fetch(directory);
+        if (!response.ok) {
+          console.warn(`⚠️ Nie można otworzyć katalogu ${directory}`);
+          return;
+        }
+
+        const text = await response.text();
+        const parser = new DOMParser();
+        const html = parser.parseFromString(text, 'text/html');
+
+        // Znajdź wszystkie linki do plików
+        const links = Array.from(html.querySelectorAll('a'))
+          .map((a) => a.getAttribute('href'))
+          .filter((href) => href && !href.startsWith('?') && href !== '../');
+
+        for (const link of links) {
+          const fullPath = `${directory}${link}`;
+
+          // Jeśli to folder, przeszukaj go rekurencyjnie
+          if (link.endsWith('/')) {
+            await scanDirectory(fullPath);
+          }
+          // Jeśli to plik modelu, dodaj go do listy
+          else if (
+            link.toLowerCase().endsWith('.glb') ||
+            link.toLowerCase().endsWith('.gltf')
+          ) {
+            const modelName = link
+              .split('/')
+              .pop()
+              .replace(/\.(glb|gltf)$/i, '');
+            const modelPath = fullPath;
+
+            models.push({
+              name: modelName,
+              path: modelPath,
+              directory: directory,
+            });
+            
+            // Sprawdzenie czy istnieje plik config.json dla modelu
+            try {
+              const configPath = `${directory}config.json`;
+              const configResponse = await fetch(configPath, { method: 'HEAD' });
+              
+              // Jeśli plik config.json nie istnieje, wygeneruj go
+              if (!configResponse.ok) {
+                console.log(`⚠️ Brak pliku konfiguracyjnego dla ${modelName}, generuję domyślny...`);
+                
+                // Używamy domyślnej konfiguracji z pliku config.json
+                const defaultConfig = {
+                  "center": {"x": true, "y": true, "z": true},
+                  "position": {
+                    "method": "floor",
+                    "value": 0,
+                    "yOffset": 0
+                  },
+                  "scale": {
+                    "method": "fixed", 
+                    "fixedScale": 0.025
+                  },
+                  "rotation": {
+                    "x": 0,
+                    "y": 0,
+                    "z": 0
+                  }
+                };
+                
+                // Zapisz domyślną konfigurację dla modelu
+                // Implementacja zapisu po stronie klienta nie jest możliwa ze względów bezpieczeństwa
+                // W praktyce należałoby użyć endpointu API lub generować pliki po stronie serwera
+                console.log(`ℹ️ Konfiguracja dla ${modelName} powinna zostać utworzona na serwerze`);
+              }
+            } catch (configError) {
+              console.error(`❌ Błąd sprawdzania pliku config.json dla modelu ${modelName}:`, configError);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(
+          `❌ Błąd podczas skanowania katalogu ${directory}:`,
+          error
+        );
+      }
+    }
+
+    // Rozpocznij skanowanie od głównego katalogu models
+    await scanDirectory('models/');
+
+    console.log('✅ Znaleziono modele:', models);
+    return models;
+  } catch (error) {
+    console.error('❌ Błąd podczas skanowania katalogów modeli:', error);
+    return [];
   }
-  
-  // Aktualizacja materiału podłogi, jeśli scena zawiera konfigurację materiału
-  if (config.materials && config.materials.floor) {
-    updateFloorMaterial(config.materials.floor);
-  }
-  
-  currentSceneConfig = config;
 }
-Zmiana 5: Funkcja do aktualizacji materiału podłogi
-javascript// Funkcja do aktualizacji materiału podłogi
-function updateFloorMaterial(materialConfig) {
-  // Znajdź obiekt podłogi w scenie
-  const floor = scene.children.find(child => 
-    child.isMesh && child.geometry instanceof THREE.PlaneGeometry);
-  
-  if (!floor) {
-    console.warn('⚠️ Nie znaleziono obiektu podłogi w scenie');
+2. Funkcja do aktualizacji interfejsu na podstawie znalezionych modeli
+javascript// Aktualizacja interfejsu użytkownika po znalezieniu modeli
+function updateModelsList(models) {
+  const modelsListElement = document.getElementById('modelsList');
+  if (!modelsListElement) {
+    console.error('❌ Nie znaleziono elementu listy modeli w DOM');
     return;
   }
-  
-  console.log('🔄 Aktualizacja materiału podłogi:', materialConfig);
-  
-  // Stwórz nowy materiał na podstawie konfiguracji
-  const floorMaterial = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(materialConfig.color || '#121212'),
-    roughness: materialConfig.roughness || 0.8,
-    metalness: materialConfig.metalness || 0.2,
-    transparent: materialConfig.transparent || false,
-    side: THREE.DoubleSide
-  });
-  
-  // Załaduj mapę przezroczystości, jeśli została zdefiniowana
-  if (materialConfig.alphaMap) {
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(
-      materialConfig.alphaMap,
-      (texture) => {
-        floorMaterial.alphaMap = texture;
-        floorMaterial.transparent = true;
-        floorMaterial.needsUpdate = true;
-      },
-      undefined,
-      (error) => {
-        console.error('❌ Błąd ładowania mapy przezroczystości:', error);
-      }
-    );
+
+  // Wyczyść listę modeli
+  modelsListElement.innerHTML = '';
+
+  if (models.length === 0) {
+    const emptyMessage = document.createElement('div');
+    emptyMessage.className = 'error';
+    emptyMessage.textContent = 'Nie znaleziono żadnych modeli 3D';
+    modelsListElement.appendChild(emptyMessage);
+    return;
   }
-  
-  // Zastosuj nowy materiał
-  floor.material = floorMaterial;
+
+  // Sortuj modele alfabetycznie według nazwy
+  models.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Dodaj każdy model do listy
+  models.forEach((modelInfo) => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = modelInfo.name;
+    a.dataset.path = modelInfo.path;
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      
+      // Usuń klasę active ze wszystkich linków
+      document.querySelectorAll('.models-list a').forEach(link => {
+        link.classList.remove('active');
+      });
+      
+      // Dodaj klasę active do klikniętego linku
+      e.target.classList.add('active');
+      
+      // Załaduj model
+      loadModel(modelInfo.path);
+    });
+    li.appendChild(a);
+    modelsListElement.appendChild(li);
+  });
 }
-Zmiana 6: Modyfikacja funkcji loadSceneConfig() aby sprawdzała, czy plik istnieje
-javascript// Funkcja wczytująca konfigurację sceny
-async function loadSceneConfig(sceneName = 'default') {
+3. Modyfikacja funkcji loadModelConfig
+javascript// Funkcja ładująca konfigurację modelu
+async function loadModelConfig(modelDir) {
   try {
-    const configPath = `scenes/${sceneName}.json`;
-    console.log('🔄 Ładowanie konfiguracji sceny:', configPath);
-    
-    const response = await fetch(configPath);
+    console.log(`🔍 Próba ładowania konfiguracji z: ${modelDir}/config.json`);
+    const response = await fetch(`${modelDir}/config.json`);
     if (!response.ok) {
       console.warn(
-        `⚠️ Nie udało się załadować konfiguracji sceny: ${configPath} (status: ${response.status})`
+        `⚠️ Nie znaleziono pliku konfiguracyjnego dla ${modelDir}, używam domyślnych ustawień`
       );
-      
-      // Jeśli nie udało się załadować wybranej sceny, próbujemy załadować domyślną
-      if (sceneName !== 'default') {
-        console.log('🔄 Próba załadowania domyślnej konfiguracji...');
-        return loadSceneConfig('default');
-      }
-      
-      return null;
+      return {
+        center: { x: true, y: true, z: true },
+        position: {
+          method: 'floor',
+          value: 0,
+          yOffset: 0
+        },
+        scale: {
+          method: 'fixed',
+          fixedScale: 0.025
+        },
+        rotation: {
+          x: 0,
+          y: 0,
+          z: 0
+        }
+      };
     }
 
-    try {
-      const config = await response.json();
-      console.log('✅ Załadowana konfiguracja:', config);
-      currentSceneConfig = config;
-      return config;
-    } catch (parseError) {
-      console.error(
-        `❌ Błąd parsowania JSON z pliku ${configPath}:`,
-        parseError
-      );
-      return null;
-    }
+    const config = await response.json();
+    console.log(`✅ Załadowano konfigurację dla ${modelDir}:`, config);
+    modelConfigs.set(modelDir, config);
+    return config;
   } catch (error) {
-    console.error('❌ Błąd wczytywania konfiguracji sceny:', error);
-    return null;
+    console.error(`❌ Błąd ładowania konfiguracji dla ${modelDir}:`, error);
+    return {
+      center: { x: true, y: true, z: true },
+      position: {
+        method: 'floor',
+        value: 0,
+        yOffset: 0
+      },
+      scale: {
+        method: 'fixed',
+        fixedScale: 0.025
+      },
+      rotation: {
+        x: 0,
+        y: 0,
+        z: 0
+      }
+    };
   }
 }
-Zmiana 7: Dodanie stylu CSS dla selektora scen
-W pliku style.css dodaj następujący kod:
-css/* Styl dla wyboru scen */
-.scenes-container {
-  margin-bottom: 1rem;
+4. Modyfikacja funkcji loadModel uwzględniająca parametr yOffset
+javascript// Funkcja do ładowania modelu
+async function loadModel(modelPath) {
+  if (!modelPath) {
+    console.warn('⚠️ Nie podano ścieżki do modelu');
+    return;
+  }
+
+  console.log(`🔄 Ładowanie modelu: ${modelPath}`);
+
+  if (model) {
+    scene.remove(model);
+    if (model.boundingBoxHelper) {
+      scene.remove(model.boundingBoxHelper);
+    }
+  }
+
+  currentModelPath = modelPath;
+  const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/') + 1);
+
+  try {
+    // Ładowanie konfiguracji modelu
+    const config = await loadModelConfig(modelDir);
+    console.log(`📋 Konfiguracja modelu:`, config);
+
+    const loader = new THREE.GLTFLoader();
+    const gltf = await loader.loadAsync(modelPath);
+    model = gltf.scene;
+
+    // Centrowanie modelu zgodnie z konfiguracją
+    if (config.center) {
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+
+      if (config.center.x) {
+        model.position.x = -center.x;
+      }
+      if (config.center.y) {
+        model.position.y = -center.y;
+      }
+      if (config.center.z) {
+        model.position.z = -center.z;
+      }
+    }
+
+    // Zastosowanie rotacji zgodnie z konfiguracją
+    if (config.rotation) {
+      model.rotation.x = THREE.MathUtils.degToRad(config.rotation.x || 0);
+      model.rotation.y = THREE.MathUtils.degToRad(config.rotation.y || 0);
+      model.rotation.z = THREE.MathUtils.degToRad(config.rotation.z || 0);
+    }
+
+    // Zastosowanie skalowania zgodnie z konfiguracją
+    if (config && config.scale) {
+      if (config.scale.method === 'fixed') {
+        const scale = config.scale.fixedScale || 0.025;
+        console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
+        model.scale.set(scale, scale, scale);
+      } else if (config.scale.method === 'auto') {
+        // Najpierw obliczamy bounding box dla oryginalnego modelu
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        
+        // Wybierz największy wymiar jako referencyjny
+        const maxDimension = Math.max(size.x, size.y, size.z);
+        const targetSize = config.scale.targetSize || 100;
+        
+        // Ogranicz skalę do min/max jeśli określono
+        let scale = targetSize / maxDimension;
+        
+        if (config.scale.maxSize && (targetSize > config.scale.maxSize)) {
+          scale = config.scale.maxSize / maxDimension;
+        }
+        
+        if (config.scale.minSize && (targetSize < config.scale.minSize)) {
+          scale = config.scale.minSize / maxDimension;
+        }
+        
+        console.log(`🔍 Używam automatycznej skali: ${scale} (metoda: auto, targetSize: ${targetSize})`);
+        model.scale.set(scale, scale, scale);
+      }
+    }
+
+    // Obliczenie bounding boxa po zastosowaniu skali i rotacji
+    const box = new THREE.Box3().setFromObject(model);
+
+    // Zastosowanie metody ustawiania pozycji
+    if (config.position) {
+      const yOffset = config.position.yOffset || 0;
+      
+      switch (config.position.method) {
+        case 'floor':
+          // Najniższy punkt modelu na poziomie podłogi + offset
+          model.position.y = -box.min.y + yOffset;
+          break;
+        case 'center':
+          // Środek modelu na poziomie podłogi + offset
+          const height = box.max.y - box.min.y;
+          model.position.y = height / 2 + yOffset;
+          break;
+        case 'topEdge':
+          // Górna krawędź modelu na określonej wysokości
+          const value = config.position.value || 0;
+          model.position.y = value - box.max.y + yOffset;
+          break;
+        default:
+          // Domyślnie: najniższy punkt na poziomie podłogi
+          model.position.y = -box.min.y + yOffset;
+      }
+    }
+
+    scene.add(model);
+
+    // Dodanie wizualizacji bounding boxa
+    model.boundingBoxHelper = createBoundingBoxHelper(model);
+    scene.add(model.boundingBoxHelper);
+
+    // Ustawienie widoczności bounding boxa zgodnie z globalnym ustawieniem
+    const showBoundingBoxButton = document.getElementById('showBoundingBox');
+    if (showBoundingBoxButton) {
+      model.boundingBoxHelper.visible = showBoundingBoxButton.classList.contains('active');
+    } else {
+      model.boundingBoxHelper.visible = false;
+    }
+    
+    console.log(`✅ Model załadowany: ${modelPath}`);
+  } catch (error) {
+    console.error('❌ Błąd podczas ładowania modelu:', error);
+  }
 }
-
-.scenes-select {
-  width: 100%;
-  padding: 0.5rem;
-  background: #2d2d2d;
-  color: #e0e0e0;
-  border: 1px solid #404040;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.875rem;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23e0e0e0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'%3E%3C/path%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 28px;
+5. Modyfikacja funkcji init
+javascript// W funkcji init() zamień obecny kod ładowania modeli na:
+async function init() {
+  // ... istniejący kod ...
+  
+  // Załadowanie listy modeli
+  console.log('🔍 Skanowanie folderów w poszukiwaniu modeli...');
+  const models = await scanModelsDirectory();
+  updateModelsList(models);
+  
+  // ... istniejący kod ...
 }
+Modyfikacja pliku .gitignore
+Aby umożliwić śledzenie plików modelowych, należy usunąć lub zmodyfikować te linie:
+# Large files
+*.glb
+*.gltf
+Po usunięciu tych linii modele GLTF i GLB będą uwzględniane w repozytorium. Nie zaleca się jednak usuwania tych wpisów, ponieważ pliki modelowe mogą być zbyt duże dla repozytoriów Git. Lepszym rozwiązaniem byłoby przechowywanie ich na zewnętrznym serwerze.
+Podsumowanie zmian:
 
-.scenes-select:hover {
-  background-color: #404040;
-}
+Dostosowano skrypt generate_config.py do generowania plików konfiguracyjnych zgodnych z formatem używanym w kodzie
+Zaimplementowano poprawną funkcję scanModelsDirectory() do przeglądania katalogów z modelami
+Dodano funkcję updateModelsList() do aktualizacji interfejsu użytkownika
+Zmodyfikowano funkcję loadModelConfig() do obsługi brakującego parametru yOffset
+Rozszerzono funkcję loadModel() o prawidłową obsługę wszystkich parametrów z pliku konfiguracyjnego
+Zaktualizowano funkcję init() aby używała nowych funkcji skanowania katalogów
 
-.scenes-select:focus {
-  outline: none;
-  border-color: #bb86fc;
-  box-shadow: 0 0 0 2px rgba(187, 134, 252, 0.3);
-}
-Zmiana 8: Utworzenie pliku scenes/list.json
-Stwórz prosty plik scenes/list.json zawierający listę dostępnych scen (bez rozszerzeń):
-json["default", "studio", "outdoor", "dark"]
-Za każdym razem, gdy dodasz nowy plik konfiguracyjny sceny, możesz zaktualizować ten plik. Alternatywnie, możesz stworzyć skrypt do generowania tego pliku automatycznie (np. w Node.js), jeśli wolisz.
-Podsumowanie zmian w skrypcie.js
-Zidentyfikowałem, że implementacja konfiguracji sceny w default.json jest prawidłowa. Zaproponowane zmiany pozwolą na:
-
-Dynamiczne ładowanie listy dostępnych scen z pliku scenes/list.json
-Dodanie interfejsu wyboru scen w panelu oświetlenia
-Poprawne ładowanie i aplikowanie konfiguracji wybranej sceny
-Obsługę błędów, gdy plik konfiguracyjny nie istnieje
-
-Wszystkie te zmiany są zaimplementowane w czystym JavaScript, bez potrzeby używania PHP czy innych technologii serwerowych.
+Powyższe zmiany powinny poprawnie implementować przeszukiwanie folderów i ładowanie modeli zgodnie z ich konfiguracją.

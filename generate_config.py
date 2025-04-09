@@ -16,13 +16,11 @@ def generate_config(gltf_file):
         "position": {
             "method": "floor",  # Możliwe wartości: "floor", "center", "topEdge"
             "value": 0,
+            "yOffset": 0,  # Dodanie brakującego parametru yOffset
         },
         "scale": {
-            "method": "auto",  # Możliwe wartości: "auto", "fixed"
-            "targetSize": 100,  # Docelowy rozmiar w jednostkach
-            "maxSize": 200,  # Maksymalny rozmiar
-            "minSize": 50,  # Minimalny rozmiar
-            "fixedScale": 1.0,  # Stała skala (używana gdy method = "fixed")
+            "method": "fixed",  # Zmiana z "auto" na "fixed" zgodnie z plikiem config.json
+            "fixedScale": 0.025,  # Zmiana wartości zgodnie z plikiem config.json
         },
         "rotation": {
             "x": 0,  # Obrót wokół osi X w stopniach
@@ -33,7 +31,7 @@ def generate_config(gltf_file):
 
     # Specjalne ustawienia dla GCS 13
     if "GCS 13 Rel z Bel" in str(gltf_file):
-        config["position"] = {"method": "topEdge", "value": 72}
+        config["position"] = {"method": "topEdge", "value": 72, "yOffset": 0}
         config["scale"] = {"method": "fixed", "fixedScale": 0.5}
         config["rotation"] = {"x": 0, "y": 0, "z": 0}  # Domyślne wartości dla GCS 13
 
