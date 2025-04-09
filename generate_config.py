@@ -32,7 +32,7 @@ def generate_config(gltf_file):
     # Specjalne ustawienia dla GCS 13
     if "GCS 13 Rel z Bel" in str(gltf_file):
         config["position"] = {"method": "topEdge", "value": 72, "yOffset": 0}
-        config["scale"] = {"method": "fixed", "fixedScale": 0.5}
+        config["scale"] = {"method": "fixed", "fixedScale": 0.1}
         config["rotation"] = {"x": 0, "y": 0, "z": 0}  # Domyślne wartości dla GCS 13
 
     # Zapisanie konfiguracji do pliku

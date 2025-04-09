@@ -342,12 +342,11 @@ function createAxis() {
   return axis;
 }
 
-// Funkcja przeszukująca folder w poszukiwaniu modeli
-async function scanModelsDirectory() {
+// Funkcja wczytująca modele z pliku index.json
+async function loadModelsFromIndex() {
   try {
-    console.log('🔍 Rozpoczynam wczytywanie modeli...');
+    console.log('🔍 Wczytuję listę modeli z index.json...');
 
-    // Wczytaj plik index.json
     const response = await fetch('models/index.json');
     if (!response.ok) {
       console.error('❌ Nie można wczytać pliku index.json');
@@ -363,9 +362,7 @@ async function scanModelsDirectory() {
     for (const modelInfo of modelsList) {
       console.log(`\n🔄 Przetwarzam model: ${modelInfo.name}`);
 
-      // Sprawdź czy istnieje plik config.json
-      console.log(`⚙️ Sprawdzam config.json: ${modelInfo.config_path}`);
-
+      // Wczytaj plik config.json
       let config = null;
       try {
         const configResponse = await fetch(`models/${modelInfo.config_path}`);
@@ -387,7 +384,7 @@ async function scanModelsDirectory() {
         const modelData = {
           name: modelInfo.name,
           path: `models/${gltfFile}`,
-          directory: `models/${gltfFile.split('\\')[0]}/`,
+          directory: `models/${gltfFile.split(/[\\/]/)[0]}`,
           config: config,
         };
 
@@ -409,7 +406,7 @@ async function scanModelsDirectory() {
 async function loadModelsList() {
   try {
     // Zeskanuj katalogi w poszukiwaniu modeli
-    const models = await scanModelsDirectory();
+    const models = await loadModelsFromIndex();
     console.log('✅ Znaleziono modele:', models);
 
     // Zwróć listę modeli w odpowiednim formacie
@@ -831,24 +828,22 @@ async function loadModelConfig(modelDir) {
       return modelConfigs.get(modelDir);
     }
 
-    // Pobierz listę modeli
-    const models = await scanModelsDirectory();
+    // Pobierz listę modeli z index.json
+    const models = await loadModelsFromIndex();
     const modelInfo = models.find((m) => m.directory === modelDir);
 
     if (!modelInfo) {
-      console.warn(
-        `⚠️ Nie znaleziono informacji o modelu w katalogu ${modelDir}`
-      );
+      console.warn(`⚠️ Nie znaleziono modelu w katalogu ${modelDir}`);
       return getDefaultConfig();
     }
 
     if (!modelInfo.config) {
-      console.warn(`⚠️ Brak konfiguracji dla modelu w katalogu ${modelDir}`);
+      console.warn(`⚠️ Brak konfiguracji dla modelu ${modelInfo.name}`);
       return getDefaultConfig();
     }
 
     console.log(
-      `✅ Załadowano konfigurację dla ${modelDir}:`,
+      `✅ Załadowano konfigurację dla ${modelInfo.name}:`,
       modelInfo.config
     );
     modelConfigs.set(modelDir, modelInfo.config);
@@ -869,7 +864,7 @@ function getDefaultConfig() {
     },
     scale: {
       method: 'fixed',
-      fixedScale: 0.2,
+      fixedScale: 0.1,
     },
     rotation: {
       x: 0,
@@ -904,9 +899,7 @@ async function loadModel(modelPath) {
 
   currentModelPath = modelPath;
   // Konwertuj ścieżkę do formatu URL
-  const modelDir = modelPath
-    .substring(0, modelPath.lastIndexOf('/'))
-    .replace(/\\/g, '/');
+  const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/'));
   const modelName = modelPath.split(/[\\/]/).pop();
 
   try {
@@ -950,6 +943,20 @@ async function loadModel(modelPath) {
 
     // Ustawienie pozycji modelu tak, aby najniższy punkt był w (0,0,0)
     model.position.y = -box.min.y;
+
+    // Zastosowanie rotacji z konfiguracji
+    if (config && config.rotation) {
+      const rotation = config.rotation;
+      // Konwersja stopni na radiany
+      model.rotation.x = THREE.MathUtils.degToRad(rotation.x || 0);
+      model.rotation.y = THREE.MathUtils.degToRad(rotation.y || 0);
+      model.rotation.z = THREE.MathUtils.degToRad(rotation.z || 0);
+      console.log(`🔄 Zastosowano rotację z config.json:`, {
+        x: rotation.x || 0,
+        y: rotation.y || 0,
+        z: rotation.z || 0,
+      });
+    }
 
     scene.add(model);
 

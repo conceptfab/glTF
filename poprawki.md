@@ -1,101 +1,91 @@
-Oto poprawiona funkcja scanModelsDirectory(), która jest istotą problemu:
-javascript// Funkcja pomocnicza do opóźnienia
-function delay(ms) {
-return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Funkcja przeszukująca folder w poszukiwaniu modeli
-async function scanModelsDirectory() {
-try {
-const models = [];
-
-    // Funkcja pomocnicza do przeszukiwania podfolderów
-    async function scanDirectory(directory) {
-      try {
-        // Dodajemy trailing slash jeśli go nie ma
-        if (!directory.endsWith('/')) {
-          directory += '/';
-        }
-
-        const response = await fetch(directory);
-        if (!response.ok) {
-          console.warn(`⚠️ Nie można otworzyć katalogu ${directory}`);
-          return;
-        }
-
-        const text = await response.text();
-        const parser = new DOMParser();
-        const html = parser.parseFromString(text, 'text/html');
-
-        // Znajdź wszystkie linki do plików
-        const links = Array.from(html.querySelectorAll('a'))
-          .map((a) => a.getAttribute('href'))
-          .filter((href) => href && !href.startsWith('?') && href !== '../');
-
-        // Oddzielna tablica dla folderów, aby najpierw przetwarzać pliki .gltf z aktualnego katalogu
-        const folders = [];
-
-        for (const link of links) {
-          const fullPath = `${directory}${link}`;
-
-          // Jeśli to folder, dodaj do listy folderów do późniejszego przeszukania
-          if (link.endsWith('/')) {
-            folders.push(fullPath);
-          }
-          // Jeśli to plik modelu, dodaj go do listy
-          else if (
-            link.toLowerCase().endsWith('.glb') ||
-            link.toLowerCase().endsWith('.gltf')
-          ) {
-            const modelName = link
-              .split('/')
-              .pop()
-              .replace(/\.(glb|gltf)$/i, '');
-
-            models.push({
-              name: modelName,
-              path: fullPath,
-              directory: directory
-            });
-          }
-        }
-
-        // Przeszukaj wszystkie podfoldery po znalezieniu modeli w bieżącym katalogu
-        for (const folder of folders) {
-          await delay(50); // Opóźnienie 50ms między folderami
-          await scanDirectory(folder);
-        }
-      } catch (error) {
-        console.error(`❌ Błąd podczas skanowania katalogu ${directory}:`, error);
+Zmiana w pliku script.js
+W funkcji loadModel() sposób wykorzystania wartości skali jest nieprawidłowy:
+javascript// Zmiana w pliku script.js, w funkcji loadModel():
+    // Było (w części dotyczącej skalowania):
+    if (config && config.scale) {
+      if (config.scale.method === 'fixed') {
+        const scale = config.scale.fixedScale || 1.0;
+        console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
+        model.scale.set(scale, scale, scale);
+      } else if (config.scale.method === 'auto') {
+        const maxDimension = Math.max(size.x, size.y, size.z);
+        const targetSize = config.scale.targetSize || 100;
+        const scale = targetSize / maxDimension;
+        console.log(
+          `🔍 Używam automatycznej skali: ${scale} (metoda: auto, targetSize: ${targetSize}, maxDimension: ${maxDimension})`
+        );
+        model.scale.set(scale, scale, scale);
       }
     }
-
-    // Rozpocznij skanowanie od głównego katalogu models
-    await scanDirectory('models/');
-
-    return models;
-
-} catch (error) {
-console.error('❌ Błąd podczas skanowania katalogów modeli:', error);
-return [];
-}
-}
-Kluczowa zmiana w powyższym kodzie to oddzielenie przeszukiwania folderów i plików, co może zapobiec problemom z zamykaniem kanału komunikacji.
-Problem z komunikatem błędu "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received" może wskazywać na problemy z serwowanym katalogiem lub ograniczenia CORS. Upewnij się, że:
-
-Twój serwer poprawnie obsługuje przeglądanie katalogów
-Nie ma ograniczeń CORS blokujących odczyt zawartości katalogów
-Pliki są dostępne pod podanymi ścieżkami
-
-Jeśli problem nadal występuje, możesz spróbować dodać opóźnienie między skanowaniem poszczególnych folderów:
-javascript// Dodaj tę funkcję pomocniczą przed scanDirectory
-function delay(ms) {
-return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// A w funkcji scanDirectory dodaj opóźnienie przed rekurencyjnym wywołaniem:
-for (const folder of folders) {
-await delay(50); // Opóźnienie 50ms między folderami
-await scanDirectory(folder);
-}
-Takie opóźnienie może pomóc uniknąć przeciążenia przeglądarki zbyt wieloma równoczesnymi żądaniami.
+    
+    // Powinno być:
+    if (config && config.scale) {
+      if (config.scale.method === 'fixed') {
+        const scale = config.scale.fixedScale || 1.0;
+        console.log(`🔍 Używam stałej skali: ${scale} (metoda: fixed)`);
+        model.scale.set(scale, scale, scale);
+      } else if (config.scale.method === 'auto') {
+        const maxDimension = Math.max(size.x, size.y, size.z);
+        const targetSize = config.scale.targetSize || 100;
+        const scale = targetSize / maxDimension;
+        console.log(
+          `🔍 Używam automatycznej skali: ${scale} (metoda: auto, targetSize: ${targetSize}, maxDimension: ${maxDimension})`
+        );
+        model.scale.set(scale, scale, scale);
+      }
+    }
+W tym przypadku kod wygląda poprawnie, ale problem może leżeć w specyficznym przypadku modelu "GCS 13 Rel z Bel". Zauważyłem, że w funkcji generate_config.py dla tego modelu wartość skalowania jest ustawiona na 0.5, co może powodować konflikt z wartością 0.1 w pliku config.json:
+python# Zmiana w pliku generate_config.py, w części dotyczącej GCS 13:
+    # Było:
+    if "GCS 13 Rel z Bel" in str(gltf_file):
+        config["position"] = {"method": "topEdge", "value": 72, "yOffset": 0}
+        config["scale"] = {"method": "fixed", "fixedScale": 0.5}
+        config["rotation"] = {"x": 0, "y": 0, "z": 0}  # Domyślne wartości dla GCS 13
+    
+    # Powinno być:
+    if "GCS 13 Rel z Bel" in str(gltf_file):
+        config["position"] = {"method": "topEdge", "value": 72, "yOffset": 0}
+        config["scale"] = {"method": "fixed", "fixedScale": 0.1}  # Zmiana na 0.1 zgodnie z config.json
+        config["rotation"] = {"x": 0, "y": 0, "z": 0}
+Zmiana w funkcji getDefaultConfig w pliku script.js
+Domyślna konfiguracja również powinna zawierać poprawną wartość skali:
+javascript// Zmiana w pliku script.js, w funkcji getDefaultConfig():
+    // Było:
+    function getDefaultConfig() {
+      return {
+        center: { x: true, y: true, z: true },
+        position: {
+          method: 'floor',
+          value: 0,
+        },
+        scale: {
+          method: 'fixed',
+          fixedScale: 0.2,  // Nieprawidłowa wartość
+        },
+        rotation: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+      };
+    }
+    
+    // Powinno być:
+    function getDefaultConfig() {
+      return {
+        center: { x: true, y: true, z: true },
+        position: {
+          method: 'floor',
+          value: 0,
+        },
+        scale: {
+          method: 'fixed',
+          fixedScale: 0.1,  // Zmiana na 0.1 zgodnie z config.json
+        },
+        rotation: {
+          x: 0,
+          y: 0,
+          z: 0,
+        },
+      };
+    }

@@ -1,5 +1,11 @@
 import json
+import os
 from pathlib import Path
+
+
+def normalize_path(path):
+    """Konwertuje ścieżkę do formatu URL (zawsze używając slashów)"""
+    return str(path).replace(os.sep, "/")
 
 
 def generate_index():
@@ -18,8 +24,8 @@ def generate_index():
         # Wyszukiwanie plików GLTF i GLB
         for ext in ["*.gltf", "*.glb"]:
             for file in folder.glob(ext):
-                # Konwertuj ścieżkę do formatu URL (używając slashów)
-                rel_path = str(file.relative_to(models_dir)).replace("\\", "/")
+                # Konwertuj ścieżkę do formatu URL
+                rel_path = normalize_path(file.relative_to(models_dir))
                 model_data["gltf_files"].append(rel_path)
                 print(f"  ✅ Znaleziono plik: {rel_path}")
 
@@ -27,7 +33,7 @@ def generate_index():
         config_path = folder / "config.json"
         if config_path.exists():
             # Konwertuj ścieżkę do formatu URL
-            rel_config = str(config_path.relative_to(models_dir)).replace("\\", "/")
+            rel_config = normalize_path(config_path.relative_to(models_dir))
             model_data["config_path"] = rel_config
             print(f"  ✅ Znaleziono config.json: {rel_config}")
 
