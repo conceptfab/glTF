@@ -389,13 +389,29 @@ async function init() {
     });
   }
 
-  // Konfiguracja kamery
+  // Inicjalizacja kamery
   camera = new THREE.PerspectiveCamera(
-    60,
+    75,
     window.innerWidth / window.innerHeight,
     0.1,
-    2000
+    1000
   );
+
+  // Konfiguracja renderera
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.getElementById('container').appendChild(renderer.domElement);
+
+  // Inicjalizacja kontrolek kamery
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.maxDistance = 1000;
+  controls.minDistance = 1;
+  controls.enablePan = true;
+  controls.screenSpacePanning = true;
+  controls.target.set(0, 0, 0);
+  controls.update();
 
   // Ustawienie początkowej pozycji kamery z konfiguracji
   if (
@@ -425,76 +441,33 @@ async function init() {
     camera.position.set(5, 5, 5);
   }
 
-  // Konfiguracja renderera
-  renderer = new THREE.WebGLRenderer();
+  // Ustawienie początkowej pozycji kamery z konfiguracji
+  if (
+    currentSceneConfig &&
+    currentSceneConfig.cameras &&
+    currentSceneConfig.cameras.default
+  ) {
+    const defaultCam = currentSceneConfig.cameras.default;
+    console.log('📷 Ustawiam domyślną pozycję kamery:', defaultCam.position);
+    camera.position.set(
+      defaultCam.position.x,
+      defaultCam.position.y,
+      defaultCam.position.z
+    );
 
-  // Zastosuj ustawienia z konfiguracji sceny
-  if (currentSceneConfig && currentSceneConfig.renderer) {
-    const rendererConfig = currentSceneConfig.renderer;
-
-    // Bezpieczne ustawienie pixelRatio
-    if (rendererConfig.pixelRatio) {
-      if (rendererConfig.pixelRatio === 'devicePixelRatio') {
-        renderer.setPixelRatio(window.devicePixelRatio);
-      } else if (typeof rendererConfig.pixelRatio === 'number') {
-        renderer.setPixelRatio(rendererConfig.pixelRatio);
-      } else {
-        console.warn('⚠️ Nieprawidłowa wartość pixelRatio, używam domyślnej');
-        renderer.setPixelRatio(window.devicePixelRatio);
-      }
+    // Ustawienie celu kamery, jeśli został zdefiniowany
+    if (defaultCam.target) {
+      console.log('🎯 Ustawiam domyślny cel kamery:', defaultCam.target);
+      controls.target.set(
+        defaultCam.target.x,
+        defaultCam.target.y,
+        defaultCam.target.z
+      );
+      controls.update();
     }
-
-    // Bezpieczne ustawienie pozostałych właściwości
-    if (rendererConfig.antialias !== undefined)
-      renderer.antialias = rendererConfig.antialias;
-    if (rendererConfig.logarithmicDepthBuffer !== undefined)
-      renderer.logarithmicDepthBuffer = rendererConfig.logarithmicDepthBuffer;
-
-    if (rendererConfig.shadowMap) {
-      renderer.shadowMap.enabled = rendererConfig.shadowMap.enabled;
-      renderer.shadowMap.type =
-        THREE[rendererConfig.shadowMap.type + 'ShadowMap'];
-
-      // Konfiguracja mapy cieni dla światła głównego
-      if (lights.keyLight) {
-        lights.keyLight.shadow.mapSize.width = rendererConfig.shadowMap.width;
-        lights.keyLight.shadow.mapSize.height = rendererConfig.shadowMap.height;
-        lights.keyLight.shadow.radius = rendererConfig.shadowMap.radius;
-        lights.keyLight.shadow.blurSamples =
-          rendererConfig.shadowMap.blurSamples;
-        lights.keyLight.shadow.bias = rendererConfig.shadowMap.bias;
-        lights.keyLight.shadow.normalBias = rendererConfig.shadowMap.normalBias;
-      }
-    }
-
-    renderer.outputEncoding = THREE[rendererConfig.outputEncoding + 'Encoding'];
-    renderer.toneMapping = THREE[rendererConfig.toneMapping + 'ToneMapping'];
-    renderer.toneMappingExposure = rendererConfig.toneMappingExposure;
   } else {
-    // Fallback do domyślnych ustawień
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.antialias = true;
-    renderer.logarithmicDepthBuffer = true;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    camera.position.set(5, 5, 5);
   }
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.getElementById('container').appendChild(renderer.domElement);
-
-  // Inicjalizacja kontrolek kamery
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.maxDistance = 1000;
-  controls.minDistance = 1;
-  controls.enablePan = true;
-  controls.screenSpacePanning = true;
-  controls.target.set(0, 0, 0);
-  controls.update();
 
   // Dodanie płaszczyzny podłogi
   console.log('🏗️ Tworzenie podłogi...');
